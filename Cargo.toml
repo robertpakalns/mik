@@ -1,0 +1,7 @@
+[package]
+name = "mik"
+edition = "2024"
+
+[dependencies]
+swc_ecma_parser = { version = "23.0.0", features = ["typescript"] }
+swc_common = { version = "14.0.3", features = ["tty-emitter"] }
