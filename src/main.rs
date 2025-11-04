@@ -1,41 +1,36 @@
-use swc_common::{
-    FileName, SourceMap,
-    errors::{ColorConfig, Handler},
-    sync::Lrc,
-};
-use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
+use swc_ecma_ast::{CallExpr, Callee, Expr, ModuleItem, Stmt};
+
+mod llvm;
+mod parser;
 
 fn main() {
     let source = r#"
         console.log("mik")
     "#;
 
-    let cm: Lrc<SourceMap> = Default::default();
-    let handler = Handler::with_tty_emitter(ColorConfig::Auto, true, false, Some(cm.clone()));
-    let fm = cm.new_source_file(FileName::Custom("input.ts".into()).into(), source);
+    let module = parser::js_ts_parser::parse(source.to_string());
 
-    let lexer = Lexer::new(
-        Syntax::Typescript(TsSyntax {
-            tsx: false,
-            decorators: false,
-            dts: false,
-            no_early_errors: false,
-            disallow_ambiguous_jsx_like: false,
-        }),
-        Default::default(),
-        StringInput::from(&*fm),
-        None,
-    );
-
-    let mut parser = Parser::new_from(lexer);
-
-    for err in parser.take_errors() {
-        err.into_diagnostic(&handler).emit();
+    let mut log_string = None;
+    for item in module.body.iter() {
+        if let ModuleItem::Stmt(stmt) = item {
+            if let Stmt::Expr(expr_stmt) = stmt {
+                if let Expr::Call(CallExpr { callee, args, .. }) = &*expr_stmt.expr {
+                    if let Callee::Expr(expr) = callee {
+                        if let Expr::Member(member) = &**expr {
+                            if let Expr::Ident(obj) = &*member.obj {
+                                if obj.sym == *"console" {
+                                    log_string =
+                                        parser::parse_console::extract_console(member, args);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    let module = parser.parse_module().map_err(|err| {
-        let _ = err.into_diagnostic(&handler);
-    });
+    let log_string = log_string.expect("Only supports console.log(\"...\") with a string literal");
 
-    println!("{module:#?}");
+    llvm::compile(log_string);
 }
